@@ -1,5 +1,34 @@
 import prisma from "@/lib/prisma";
 import { unstable_cache } from "next/cache";
+import type { Link } from "@prisma/client";
+
+/**
+ * Transforms a flat list of links into a nested structure.
+ * Groups (isGroup=true) get a `children` array of their child links.
+ * Top-level links (parentId=null) without isGroup remain unchanged.
+ */
+function nestLinks(links: Link[]): (Link & { children?: Link[] })[] {
+    const childrenMap = new Map<string, Link[]>();
+    const topLevel: Link[] = [];
+
+    for (const link of links) {
+        if (link.parentId) {
+            const siblings = childrenMap.get(link.parentId) || [];
+            siblings.push(link);
+            childrenMap.set(link.parentId, siblings);
+        } else {
+            topLevel.push(link);
+        }
+    }
+
+    return topLevel.map(link => {
+        if (link.isGroup) {
+            return { ...link, children: childrenMap.get(link.id) || [] };
+        }
+        return link;
+    });
+}
+
 
 export const resolveUserByUsername = unstable_cache(
     async (username: string) => {
@@ -9,7 +38,7 @@ export const resolveUserByUsername = unstable_cache(
         });
 
         if (exactUser) {
-            return { user: exactUser, canonicalUsername: exactUser.username ?? username };
+            return { user: { ...exactUser, links: nestLinks(exactUser.links) }, canonicalUsername: exactUser.username ?? username };
         }
 
         const alias = await prisma.userAlias.findUnique({
@@ -29,7 +58,7 @@ export const resolveUserByUsername = unstable_cache(
             return null;
         }
 
-        return { user, canonicalUsername: user.username ?? username };
+        return { user: { ...user, links: nestLinks(user.links) }, canonicalUsername: user.username ?? username };
     },
     ["resolveUserByUsername"],
     { revalidate: 60, tags: ["public-profile"] }

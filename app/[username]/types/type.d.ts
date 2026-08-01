@@ -8,6 +8,9 @@ export type Link = {
     position: number;
     clicks: number;
     isPublic: boolean;
+    isGroup: boolean;
+    parentId?: string | null;
+    children?: Link[];
     startDate?: Date | null;
     endDate?: Date | null;
     updatedAt?: Date;

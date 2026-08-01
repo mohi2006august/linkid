@@ -76,16 +76,21 @@ model Link {
   position  Int      @default(0)
   clicks    Int      @default(0)
   isPublic  Boolean  @default(true)
+  isGroup   Boolean  @default(false)
+  parentId  String?
   startDate DateTime?
   endDate   DateTime?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Link?    @relation("LinkGroup", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Link[]   @relation("LinkGroup")
   clickEvents ClickEvent[]
   dailyAnalytics DailyLinkAnalytics[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([userId])
   @@index([platform])
+  @@index([parentId])
 }
 
 model ClickEvent {

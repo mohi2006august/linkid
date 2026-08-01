@@ -108,7 +108,7 @@ export default async function PublicProfile({
   }
 
   const now = new Date();
-  const activeLinks = (user.links || []).filter((link) => {
+  const activeLinks = (user.links || []).filter((link: { startDate?: Date | null; endDate?: Date | null }) => {
     if (link.startDate && new Date(link.startDate) > now) return false;
     if (link.endDate && new Date(link.endDate) < now) return false;
     return true;

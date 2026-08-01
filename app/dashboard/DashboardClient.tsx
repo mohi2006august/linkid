@@ -40,6 +40,7 @@ export default function DashboardClient({
     const [seoDescription, setSeoDescription] = useState(initialSeoDescription || "");
     const [activeTab, setActiveTab] = useState<"links" | "appearance" | "seo">("links");
     const [showAdd, setShowAdd] = useState(false);
+    const [showGroupAdd, setShowGroupAdd] = useState(false);
     const [isEmailCaptureEnabled, setIsEmailCaptureEnabled] = useState(enableEmailCapture ?? false);
     const [isPendingEmailCapture, setIsPendingEmailCapture] = useState(false);
 
@@ -73,6 +74,11 @@ export default function DashboardClient({
         setShowAdd(false);
     }
 
+    async function addGroup(group: ProfileLink) {
+        setLinks((prev) => [...prev, { ...group, children: group.children || [] }]);
+        setShowGroupAdd(false);
+    }
+
     async function updateLink(id: string, url: string, label?: string, platform?: string, startDate?: Date | null, endDate?: Date | null): Promise<boolean> {
         const csrfToken = await getCsrfToken();
 
@@ -99,10 +105,20 @@ export default function DashboardClient({
             const responseData = await response.json();
             toast.success("Link updated");
 
+            // Update link in nested structure
             setLinks((prev) =>
-                prev.map((l) =>
-                    l.id === id ? { ...l, ...responseData.link } : l
-                )
+                prev.map((l) => {
+                    if (l.id === id) return { ...l, ...responseData.link };
+                    if (l.isGroup && l.children) {
+                        return {
+                            ...l,
+                            children: l.children.map((c) =>
+                                c.id === id ? { ...c, ...responseData.link } : c
+                            ),
+                        };
+                    }
+                    return l;
+                })
             );
             return true;
         } catch (error) {
@@ -132,9 +148,18 @@ export default function DashboardClient({
         toast.success(isPublic ? "Link set to public" : "Link set to private");
 
         setLinks((prev) =>
-            prev.map((l) =>
-                l.id === id ? { ...l, isPublic } : l
-            )
+            prev.map((l) => {
+                if (l.id === id) return { ...l, isPublic };
+                if (l.isGroup && l.children) {
+                    return {
+                        ...l,
+                        children: l.children.map((c) =>
+                            c.id === id ? { ...c, isPublic } : c
+                        ),
+                    };
+                }
+                return l;
+            })
         );
     }
 
@@ -184,7 +209,80 @@ export default function DashboardClient({
             method: "DELETE",
         });
         toast.success("Link deleted");
-        setLinks((prev) => prev.filter((l) => l.id !== id));
+
+        // Remove from nested structure
+        setLinks((prev) =>
+            prev
+                .filter((l) => l.id !== id)
+                .map((l) => {
+                    if (l.isGroup && l.children) {
+                        return { ...l, children: l.children.filter((c) => c.id !== id) };
+                    }
+                    return l;
+                })
+        );
+    }
+
+    async function deleteGroup(groupId: string, deleteChildren: boolean) {
+        const csrfToken = await getCsrfToken();
+
+        const res = await fetch(`/api/links/${groupId}`, {
+            method: "DELETE",
+            headers: {
+                "Content-Type": "application/json",
+                "x-csrf-token": csrfToken,
+            },
+            body: JSON.stringify({ deleteChildren }),
+        });
+
+        if (!res.ok) {
+            toast.error("Failed to delete group");
+            return;
+        }
+
+        if (deleteChildren) {
+            toast.success("Group and links deleted");
+            setLinks((prev) => prev.filter((l) => l.id !== groupId));
+        } else {
+            toast.success("Group removed, links ungrouped");
+            setLinks((prev) => {
+                const group = prev.find((l) => l.id === groupId);
+                const ungroupedChildren = (group?.children || []).map((c) => ({
+                    ...c,
+                    parentId: null,
+                }));
+                const withoutGroup = prev.filter((l) => l.id !== groupId);
+                // Insert ungrouped children at the position where the group was
+                const groupIndex = prev.findIndex((l) => l.id === groupId);
+                withoutGroup.splice(groupIndex, 0, ...ungroupedChildren);
+                return withoutGroup;
+            });
+        }
+    }
+
+    async function renameGroup(groupId: string, newName: string) {
+        const csrfToken = await getCsrfToken();
+
+        const res = await fetch(`/api/links/${groupId}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "x-csrf-token": csrfToken,
+            },
+            body: JSON.stringify({ label: newName }),
+        });
+
+        if (!res.ok) {
+            toast.error("Failed to rename group");
+            return;
+        }
+
+        toast.success("Group renamed");
+        setLinks((prev) =>
+            prev.map((l) =>
+                l.id === groupId ? { ...l, label: newName } : l
+            )
+        );
     }
 
     return (
@@ -284,11 +382,16 @@ export default function DashboardClient({
                             links={links}
                             showAdd={showAdd}
                             setShowAdd={setShowAdd}
+                            showGroupAdd={showGroupAdd}
+                            setShowGroupAdd={setShowGroupAdd}
                             onExport={exportCsv}
                             onAdd={addLink}
+                            onAddGroup={addGroup}
                             onUpdate={updateLink}
                             onToggleVisibility={updateVisibility}
                             onDelete={deleteLink}
+                            onDeleteGroup={deleteGroup}
+                            onRenameGroup={renameGroup}
                             onReorder={setLinks}
                         />
                     </div>

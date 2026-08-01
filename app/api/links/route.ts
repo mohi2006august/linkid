@@ -42,10 +42,79 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    const isGroup = body?.isGroup === true;
+
+    const user = await prisma.user.findUnique({
+        where: { email: session.user.email },
+    });
+
+    if (!user) {
+        return NextResponse.json(
+            { error: "User not found" },
+            { status: 404 }
+        );
+    }
+
+    // --- Group creation ---
+    if (isGroup) {
+        const groupLabel = body?.label?.trim();
+        if (!groupLabel) {
+            return NextResponse.json(
+                { error: "Please enter a name for this group" },
+                { status: 400 }
+            );
+        }
+
+        try {
+            const link = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                const maxOrder = await tx.link.aggregate({
+                    where: { userId: user.id, parentId: null },
+                    _max: { position: true },
+                    _count: { id: true },
+                });
+
+                const totalCount = await tx.link.count({ where: { userId: user.id } });
+                if (totalCount >= MAX_LINKS_PER_USER) {
+                    throw Object.assign(new Error("LINK_LIMIT_REACHED"), { code: "LINK_LIMIT_REACHED" });
+                }
+
+                return tx.link.create({
+                    data: {
+                        userId: user.id,
+                        platform: "group",
+                        label: groupLabel,
+                        url: "",
+                        isGroup: true,
+                        position: (maxOrder._max.position ?? 0) + 1,
+                    },
+                });
+            }, {
+                isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            });
+
+            return NextResponse.json({ link: { ...link, children: [] } });
+        } catch (err: unknown) {
+            const error = err as { code?: string };
+            if (error?.code === "LINK_LIMIT_REACHED") {
+                return NextResponse.json(
+                    { error: `You can add a maximum of ${MAX_LINKS_PER_USER} links.` },
+                    { status: 400 }
+                );
+            }
+            console.error(err);
+            return NextResponse.json(
+                { error: "Something went wrong" },
+                { status: 500 }
+            );
+        }
+    }
+
+    // --- Regular link creation ---
     const rawUrl = body?.url?.trim();
     const customLabel = body?.label?.trim();
     const rawAlias = body?.alias?.trim();
     const customAlias = rawAlias ? rawAlias.toLowerCase().replace(/[^a-z0-9-]/g, "") : undefined;
+    const parentId = body?.parentId || null;
     
     if (rawAlias && !customAlias) {
         return NextResponse.json(
@@ -122,17 +191,6 @@ export async function POST(req: Request) {
         );
     }
 
-    const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-    });
-
-    if (!user) {
-        return NextResponse.json(
-            { error: "User not found" },
-            { status: 404 }
-        );
-    }
-
     const proposedRoute = customAlias || finalPlatform;
 
     try {
@@ -151,17 +209,29 @@ export async function POST(req: Request) {
                 throw Object.assign(new Error("ROUTE_ALREADY_EXISTS"), { code: "ROUTE_ALREADY_EXISTS" });
             }
 
-            const maxOrder = await tx.link.aggregate({
-                where: { userId: user.id },
-                _max: { position: true },
-                _count: { id: true },
-            });
+            // Validate parentId if provided
+            if (parentId) {
+                const parentGroup = await tx.link.findFirst({
+                    where: { id: parentId, userId: user.id, isGroup: true },
+                });
+                if (!parentGroup) {
+                    throw Object.assign(new Error("INVALID_GROUP"), { code: "INVALID_GROUP" });
+                }
+            }
+
+            const totalCount = await tx.link.count({ where: { userId: user.id } });
 
             // Enforce per-user link limit atomically inside the transaction
             // to prevent race conditions where concurrent requests bypass the check.
-            if ((maxOrder._count.id ?? 0) >= MAX_LINKS_PER_USER) {
+            if (totalCount >= MAX_LINKS_PER_USER) {
                 throw Object.assign(new Error("LINK_LIMIT_REACHED"), { code: "LINK_LIMIT_REACHED" });
             }
+
+            // Position within parent scope (top-level or inside group)
+            const maxOrder = await tx.link.aggregate({
+                where: { userId: user.id, parentId: parentId },
+                _max: { position: true },
+            });
 
             return tx.link.create({
                 data: {
@@ -171,6 +241,7 @@ export async function POST(req: Request) {
                     label: finalLabel,
                     url: finalUrl,
                     position: (maxOrder._max.position ?? 0) + 1,
+                    parentId: parentId,
                 },
             });
         }, {
@@ -185,6 +256,13 @@ export async function POST(req: Request) {
             return NextResponse.json(
                 { error: `The route '/${proposedRoute}' is already in use. Please provide a unique custom alias.` },
                 { status: 409 }
+            );
+        }
+
+        if (error?.code === "INVALID_GROUP") {
+            return NextResponse.json(
+                { error: "The specified group does not exist." },
+                { status: 400 }
             );
         }
 
@@ -221,12 +299,33 @@ export async function GET() {
     const user = await prisma.user.findUnique({ where: { email: session.user.email } });
     if (!user) return NextResponse.json({ links: [] });
 
-    const links = await prisma.link.findMany({
+    const allLinks = await prisma.link.findMany({
         where: { userId: user.id },
         orderBy: [
             { position: 'asc' },
             { createdAt: 'asc' }
         ],
+    });
+
+    // Build nested structure: top-level items with children nested under groups
+    const childrenMap = new Map<string, typeof allLinks>();
+    const topLevel: typeof allLinks = [];
+
+    for (const link of allLinks) {
+        if (link.parentId) {
+            const siblings = childrenMap.get(link.parentId) || [];
+            siblings.push(link);
+            childrenMap.set(link.parentId, siblings);
+        } else {
+            topLevel.push(link);
+        }
+    }
+
+    const links = topLevel.map(link => {
+        if (link.isGroup) {
+            return { ...link, children: childrenMap.get(link.id) || [] };
+        }
+        return link;
     });
 
     return NextResponse.json({ links });

@@ -1,4 +1,5 @@
 import { ProfileLinkItem } from "./ProfileLinkItem";
+import { ProfileLinkGroup } from "./ProfileLinkGroup";
 import { EmptyProfileState } from "./EmptyProfileState";
 import { ProfileLinksProps } from "./types/type";
 
@@ -15,20 +16,43 @@ export function ProfileLinks({
     }
 
     const isGrid = layoutStyle === "GRID";
-    const containerClass = isGrid 
-        ? "grid grid-cols-2 md:grid-cols-4 gap-4"
-        : "space-y-3";
 
     return (
-        <div className={containerClass}>
-            {safeLinks.map((link) => (
-                <ProfileLinkItem
-                    key={link.id}
-                    link={link}
-                    username={username}
-                    layoutStyle={layoutStyle}
-                />
-            ))}
+        <div className="space-y-3">
+            {safeLinks.map((item) => {
+                if (item.isGroup) {
+                    return (
+                        <ProfileLinkGroup
+                            key={item.id}
+                            group={item}
+                            username={username}
+                            layoutStyle={layoutStyle}
+                        />
+                    );
+                }
+
+                // Top-level (ungrouped) links
+                if (isGrid) {
+                    return (
+                        <div key={item.id} className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <ProfileLinkItem
+                                link={item}
+                                username={username}
+                                layoutStyle={layoutStyle}
+                            />
+                        </div>
+                    );
+                }
+
+                return (
+                    <ProfileLinkItem
+                        key={item.id}
+                        link={item}
+                        username={username}
+                        layoutStyle={layoutStyle}
+                    />
+                );
+            })}
         </div>
     );
 }

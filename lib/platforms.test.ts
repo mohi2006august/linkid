@@ -117,3 +117,39 @@ test("validatePlatformUrl rejects /messaging/ and /feed/ paths on any platform",
     assert.equal(validatePlatformUrl(PLATFORMS.WEBSITE, "https://example.com/messaging/inbox"), false);
     assert.equal(validatePlatformUrl(PLATFORMS.WEBSITE, "https://example.com/feed/update"), false);
 });
+
+// --- YouTube handle / URL validation (issue #546) ---
+
+test("validatePlatformUrl accepts YouTube @handles with dots and dashes", () => {
+    // Dots in handle — the exact case reported in #546
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/@user.name.dev"), true);
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://www.youtube.com/@user.name"), true);
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/@some-channel"), true);
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/@some_channel.official"), true);
+    // Multiple consecutive dots / mixed separators
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/@a.b.c.d"), true);
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/@a-b.c_d"), true);
+});
+
+test("validatePlatformUrl accepts YouTube c/ custom URLs with dots", () => {
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/c/user.name.dev"), true);
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://www.youtube.com/c/my.channel"), true);
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/c/channel-name"), true);
+});
+
+test("validatePlatformUrl still accepts standard YouTube URL formats", () => {
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/channel/UC1234567890abcdef"), true);
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/shorts/hW9_8k8Gjks"), true);
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtu.be/dQw4w9WgXcQ"), true);
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/watch?v=dQw4w9WgXcQ"), true);
+});
+
+test("validatePlatformUrl rejects invalid YouTube URLs", () => {
+    // /results is explicitly blocklisted
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/results?search_query=test"), false);
+    // Wrong domain
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://vimeo.com/@user.name"), false);
+    // Bare @ with no handle name
+    assert.equal(validatePlatformUrl(PLATFORMS.YOUTUBE, "https://youtube.com/@"), false);
+});
+

@@ -9,6 +9,7 @@ import {
     validatePlatformUrl,
 } from "@/lib/platforms";
 import { PLATFORMS } from "@/lib/constants";
+import { nestLinks } from "@/lib/linkTree";
 
 import { validateUrlBackend } from "@/lib/urlValidation";
 import { PLATFORM_ICONS } from "@/lib/platformIcons";
@@ -81,7 +82,7 @@ export async function POST(req: Request) {
                 return tx.link.create({
                     data: {
                         userId: user.id,
-                        platform: "group",
+                        platform: "system_group",
                         label: groupLabel,
                         url: "",
                         isGroup: true,
@@ -307,26 +308,7 @@ export async function GET() {
         ],
     });
 
-    // Build nested structure: top-level items with children nested under groups
-    const childrenMap = new Map<string, typeof allLinks>();
-    const topLevel: typeof allLinks = [];
-
-    for (const link of allLinks) {
-        if (link.parentId) {
-            const siblings = childrenMap.get(link.parentId) || [];
-            siblings.push(link);
-            childrenMap.set(link.parentId, siblings);
-        } else {
-            topLevel.push(link);
-        }
-    }
-
-    const links = topLevel.map(link => {
-        if (link.isGroup) {
-            return { ...link, children: childrenMap.get(link.id) || [] };
-        }
-        return link;
-    });
+    const links = nestLinks(allLinks);
 
     return NextResponse.json({ links });
 }

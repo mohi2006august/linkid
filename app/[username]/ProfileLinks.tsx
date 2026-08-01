@@ -9,7 +9,12 @@ export function ProfileLinks({
     isOwner,
     layoutStyle,
 }: ProfileLinksProps) {
-    const safeLinks = links ?? [];
+    const safeLinks = (links ?? []).filter((item) => {
+        if (item.isGroup) {
+            return (item.children?.length ?? 0) > 0;
+        }
+        return true;
+    });
 
     if (safeLinks.length === 0) {
         return <EmptyProfileState isOwner={isOwner} />;
@@ -18,25 +23,13 @@ export function ProfileLinks({
     const isGrid = layoutStyle === "GRID";
 
     return (
-        <div className="space-y-3">
+        <div className={isGrid ? "grid grid-cols-2 md:grid-cols-4 gap-4" : "space-y-3"}>
             {safeLinks.map((item) => {
                 if (item.isGroup) {
                     return (
-                        <ProfileLinkGroup
-                            key={item.id}
-                            group={item}
-                            username={username}
-                            layoutStyle={layoutStyle}
-                        />
-                    );
-                }
-
-                // Top-level (ungrouped) links
-                if (isGrid) {
-                    return (
-                        <div key={item.id} className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <ProfileLinkItem
-                                link={item}
+                        <div key={item.id} className={isGrid ? "col-span-full" : ""}>
+                            <ProfileLinkGroup
+                                group={item}
                                 username={username}
                                 layoutStyle={layoutStyle}
                             />

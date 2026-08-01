@@ -107,17 +107,19 @@ export function GroupItem({
                     <GripVertical className="h-4 w-4" />
                 </div>
 
-                <button
-                    onClick={() => setExpanded((v) => !v)}
-                    className="flex items-center gap-2 flex-1 text-left"
-                    aria-label={expanded ? "Collapse group" : "Expand group"}
-                >
-                    {expanded ? (
-                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    )}
-                    <FolderOpen className="h-4 w-4 text-primary" />
+                <div className="flex items-center gap-2 flex-1">
+                    <button
+                        onClick={() => setExpanded((v) => !v)}
+                        className="flex items-center gap-2"
+                        aria-label={expanded ? "Collapse group" : "Expand group"}
+                    >
+                        {expanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <FolderOpen className="h-4 w-4 text-primary" />
+                    </button>
 
                     {editing ? (
                         <Input
@@ -135,13 +137,17 @@ export function GroupItem({
                             autoFocus
                         />
                     ) : (
-                        <span className="font-medium text-sm">{group.label}</span>
+                        <button
+                            onClick={() => setExpanded((v) => !v)}
+                            className="flex items-center text-left"
+                        >
+                            <span className="font-medium text-sm">{group.label}</span>
+                            <span className="text-xs text-muted-foreground ml-1">
+                                ({children.length} {children.length === 1 ? "link" : "links"})
+                            </span>
+                        </button>
                     )}
-
-                    <span className="text-xs text-muted-foreground ml-1">
-                        ({children.length} {children.length === 1 ? "link" : "links"})
-                    </span>
-                </button>
+                </div>
 
                 <div className="flex gap-1">
                     {editing ? (

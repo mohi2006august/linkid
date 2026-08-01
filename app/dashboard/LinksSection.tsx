@@ -227,33 +227,78 @@ export function LinksSection({
         const activeIdStr = String(active.id);
         const overIdStr = String(over.id);
 
-        // Check if dragging over a group drop zone
+        const activeFound = findLinkById(localLinks, activeIdStr);
+        if (!activeFound) return;
+        if (activeFound.link.isGroup) return; // Don't allow groups into groups
+
+        let targetParentId: string | null = null;
         if (overIdStr.startsWith("group-drop-")) {
-            const targetGroupId = overIdStr.replace("group-drop-", "");
-            const found = findLinkById(localLinks, activeIdStr);
-            if (!found) return;
-            
-            // Don't allow groups into groups
-            if (found.link.isGroup) return;
-            
-            // Already in this group
-            if (found.parentId === targetGroupId) return;
+            targetParentId = overIdStr.replace("group-drop-", "");
+        } else {
+            const overFound = findLinkById(localLinks, overIdStr);
+            if (overFound) {
+                targetParentId = overFound.parentId;
+            }
+        }
 
-            // Move link into group
-            const newList = localLinks.map(item => {
-                if (item.id === activeIdStr) return null; // Remove from top level
-                if (item.isGroup && item.children) {
-                    return {
-                        ...item,
-                        children: item.id === targetGroupId
-                            ? [...item.children.filter(c => c.id !== activeIdStr), { ...found.link, parentId: targetGroupId }]
-                            : item.children.filter(c => c.id !== activeIdStr),
-                    };
+        if (activeFound.parentId !== targetParentId) {
+            const newLinks = [...localLinks];
+            
+            // Remove from old location
+            let movingLink: ProfileLink | null = null;
+            if (activeFound.parentId === null) {
+                const idx = newLinks.findIndex(l => l.id === activeIdStr);
+                if (idx !== -1) {
+                    movingLink = newLinks[idx];
+                    newLinks.splice(idx, 1);
                 }
-                return item;
-            }).filter(Boolean) as ProfileLink[];
+            } else {
+                const groupIdx = newLinks.findIndex(l => l.id === activeFound.parentId);
+                if (groupIdx !== -1 && newLinks[groupIdx].children) {
+                    const group = { ...newLinks[groupIdx] };
+                    const children = [...(group.children || [])];
+                    const childIdx = children.findIndex(c => c.id === activeIdStr);
+                    if (childIdx !== -1) {
+                        movingLink = { ...children[childIdx] };
+                        children.splice(childIdx, 1);
+                        group.children = children;
+                        newLinks[groupIdx] = group;
+                    }
+                }
+            }
 
-            updateLocalLinks(newList);
+            if (!movingLink) return;
+            movingLink.parentId = targetParentId;
+
+            // Insert into new location
+            if (targetParentId === null) {
+                const overIdx = newLinks.findIndex(l => l.id === overIdStr);
+                if (overIdx !== -1) {
+                    newLinks.splice(overIdx, 0, movingLink);
+                } else {
+                    newLinks.push(movingLink);
+                }
+            } else {
+                const groupIdx = newLinks.findIndex(l => l.id === targetParentId);
+                if (groupIdx !== -1) {
+                    const group = { ...newLinks[groupIdx] };
+                    const children = [...(group.children || [])];
+                    
+                    if (overIdStr.startsWith("group-drop-")) {
+                        children.push(movingLink);
+                    } else {
+                        const overIdx = children.findIndex(c => c.id === overIdStr);
+                        if (overIdx !== -1) {
+                            children.splice(overIdx, 0, movingLink);
+                        } else {
+                            children.push(movingLink);
+                        }
+                    }
+                    group.children = children;
+                    newLinks[groupIdx] = group;
+                }
+            }
+            updateLocalLinks(newLinks);
         }
     }, [localLinks, updateLocalLinks]);
 

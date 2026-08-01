@@ -23,6 +23,7 @@ export default function CreateGroupDialog({
     }
 
     async function submit() {
+        if (loading) return;
         const trimmed = name.trim();
         if (!trimmed) {
             return toast.error("Please enter a name for this group");
@@ -61,11 +62,12 @@ export default function CreateGroupDialog({
         <div className="rounded-lg border border-dashed border-primary/40 p-4 space-y-3 bg-primary/5">
             <p className="text-sm font-medium">Create a new group</p>
             <Input
+                disabled={loading}
                 placeholder="Group name (e.g. Socials, My Projects)"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => {
-                    if (e.key === "Enter") submit();
+                    if (e.key === "Enter" && !loading) submit();
                 }}
                 autoFocus
             />

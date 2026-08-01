@@ -49,7 +49,8 @@ export async function POST(req: Request) {
 
     // Collect ALL ids from payload
     const allPayloadIds = new Set(topIds);
-    for (const children of Object.values(groupOrders)) {
+    for (const [groupId, children] of Object.entries(groupOrders)) {
+      allPayloadIds.add(groupId);
       for (const cid of children) {
         allPayloadIds.add(cid);
       }
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
 
     // Verify ownership: fetch user's link ids
     const existingLinks = await prisma.link.findMany({ where: { userId: user.id }, select: { id: true, parentId: true, isGroup: true } });
+    const existingMap = new Map(existingLinks.map((l) => [l.id, l]));
     const existingIds = new Set(existingLinks.map((l) => l.id));
 
     // REQUIRE all links in payload (no partial reorders)
@@ -68,6 +70,26 @@ export async function POST(req: Request) {
     for (const pid of allPayloadIds) {
       if (!existingIds.has(pid)) {
         return NextResponse.json({ error: "Invalid link IDs" }, { status: 403 });
+      }
+    }
+
+    // Validate groupOrders keys and child kinds
+    for (const groupId of Object.keys(groupOrders)) {
+      if (!topIds.includes(groupId)) {
+        return NextResponse.json({ error: "Groups must be at the top level" }, { status: 400 });
+      }
+      const groupLink = existingMap.get(groupId);
+      if (!groupLink || !groupLink.isGroup) {
+        return NextResponse.json({ error: "Invalid group ID" }, { status: 400 });
+      }
+    }
+    
+    for (const children of Object.values(groupOrders)) {
+      for (const cid of children) {
+        const childLink = existingMap.get(cid);
+        if (childLink?.isGroup) {
+          return NextResponse.json({ error: "Groups cannot be nested" }, { status: 400 });
+        }
       }
     }
 

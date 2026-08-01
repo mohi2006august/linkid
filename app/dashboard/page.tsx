@@ -7,31 +7,7 @@ import CreateLinkId from "./CreateLinkId";
 import QRCode from "./qrcode";
 import type { Link } from "@prisma/client";
 
-/**
- * Nest flat links array into a grouped structure.
- * Groups (isGroup=true) get a `children` array.
- */
-function nestLinks(links: Link[]) {
-    const childrenMap = new Map<string, Link[]>();
-    const topLevel: Link[] = [];
-
-    for (const link of links) {
-        if (link.parentId) {
-            const siblings = childrenMap.get(link.parentId) || [];
-            siblings.push(link);
-            childrenMap.set(link.parentId, siblings);
-        } else {
-            topLevel.push(link);
-        }
-    }
-
-    return topLevel.map(link => {
-        if (link.isGroup) {
-            return { ...link, children: childrenMap.get(link.id) || [] };
-        }
-        return link;
-    });
-}
+import { nestLinks } from "@/lib/linkTree";
 
 export default async function DashboardPage() {
     const session = await getServerSession(authOptions);

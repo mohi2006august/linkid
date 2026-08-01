@@ -183,12 +183,13 @@ export async function PUT(
   try {
     const updatedLink = await prisma.$transaction(async (tx) => {
         // Enforce uniqueness for the resulting route if platform is changing
-        if (data.platform) {
+        if (data.platform && data.platform !== "system_group") {
             const proposedRoute = link.alias || data.platform;
             const existingLink = await tx.link.findFirst({
                 where: {
                     userId: link.userId,
                     id: { not: link.id },
+                    isGroup: false,
                     OR: [
                         { alias: proposedRoute },
                         { platform: proposedRoute, alias: null }
@@ -284,11 +285,25 @@ export async function DELETE(
           where: { parentId: id, userId: link.userId },
         });
       } else {
-        // Ungroup: set children's parentId to null
-        await tx.link.updateMany({
-          where: { parentId: id, userId: link.userId },
-          data: { parentId: null },
+        // Ungroup: set children's parentId to null and reassign positions
+        const children = await tx.link.findMany({
+            where: { parentId: id, userId: link.userId },
+            orderBy: { position: 'asc' },
         });
+
+        const maxOrder = await tx.link.aggregate({
+            where: { userId: link.userId, parentId: null },
+            _max: { position: true },
+        });
+
+        let nextPosition = (maxOrder._max.position ?? 0) + 1;
+        
+        for (const child of children) {
+            await tx.link.update({
+                where: { id: child.id },
+                data: { parentId: null, position: nextPosition++ },
+            });
+        }
       }
       await tx.link.delete({ where: { id } });
     });

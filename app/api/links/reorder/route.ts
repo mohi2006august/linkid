@@ -130,18 +130,25 @@ export async function POST(req: Request) {
     if (updates.length === 0) return NextResponse.json({ ok: true, changed: 0 });
 
     // Atomic update with ownership check to avoid TOCTOU races
-    const results = await prisma.$transaction(
-      updates.map((u) =>
-        prisma.link.updateMany({
-          where: { id: u.id, userId: user.id },
-          data: { position: u.newOrder, parentId: u.newParentId },
-        })
-      )
-    );
+    try {
+      await prisma.$transaction(async (tx) => {
+        for (const u of updates) {
+          const result = await tx.link.updateMany({
+            where: { id: u.id, userId: user.id },
+            data: { position: u.newOrder, parentId: u.newParentId },
+          });
 
-    // Ensure each update affected exactly one row (ownership preserved)
-    if (results.some((r) => r.count !== 1)) {
-      return NextResponse.json({ error: "Reorder conflict, please retry" }, { status: 409 });
+          // Ensure each update affected exactly one row (ownership preserved)
+          if (result.count !== 1) {
+            throw new Error("REORDER_CONFLICT");
+          }
+        }
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "REORDER_CONFLICT") {
+        return NextResponse.json({ error: "Reorder conflict, please retry" }, { status: 409 });
+      }
+      throw err;
     }
 
     return NextResponse.json({ ok: true, changed: updates.length });
